@@ -2,8 +2,8 @@
 //
 // Spring 2023
 //
-// By: Kambinachi Obioha
-// Uni: kno2117
+// By: Kambinachi Obioha and Rohit Biswas
+// Uni: kno2117 and rb3908
 
 module lab1( input logic        CLOCK_50,  // 50 MHz Clock input
 	     
