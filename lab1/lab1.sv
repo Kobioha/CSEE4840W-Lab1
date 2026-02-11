@@ -2,93 +2,131 @@
 //
 // Spring 2023
 //
-// By: Kambinachi Obioha and Rohit Biswas
-// Uni: kno2117 and rb3908
+// By: <your name here>
+// Uni: <your uni here>
 
-module lab1( input logic        CLOCK_50,  // 50 MHz Clock input
-	     
-	     input logic [3:0] 	KEY, // Pushbuttons; KEY[0] is rightmost
+module lab1(
+    input  logic        CLOCK_50,  // 50 MHz Clock input
+    input  logic [3:0]   KEY,       // Pushbuttons; KEY[0] is rightmost
+    input  logic [9:0]   SW,        // Switches; SW[0] is rightmost
 
-	     input logic [9:0] 	SW, // Switches; SW[0] is rightmost
+    // 7-segment LED displays; HEX0 is rightmost
+    output logic [6:0]   HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
 
-	     // 7-segment LED displays; HEX0 is rightmost
-	     output logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
+    output logic [9:0]   LEDR       // LEDs above the switches; LEDR[0] on right
+);
 
-	     output logic [9:0] LEDR // LEDs above the switches; LED[0] on right
-	     );
+    // Core signals
+    logic        clk, go, done;
+    logic [31:0] start;
+    logic [15:0] count;
 
-   logic 			clk, go, done;   
-   logic [31:0] 		start;
-   logic [15:0] 		count;
+    // Display/control
+    logic [9:0]  base;
+    logic [7:0]  offset;
+    logic [11:0] n;
+    logic [11:0] count12;
 
-   logic [11:0] 		n;
-   
-   assign clk = CLOCK_50;
- 
-   range #(256, 8) // RAM_WORDS = 256, RAM_ADDR_BITS = 8)
-         r ( .clk(clk), .go(go), .start(start), .done(done), .count(count)); // Connect everything with matching names
+    // Button handling
+    logic [21:0] hold_ctr;
+    logic        repeat_tick;
+    logic        key0_pressed, key1_pressed, key2_pressed, key3_pressed;
+    logic        key0_prev,    key1_prev,    key2_prev,    key3_prev;
 
-   hex7seg d0(.a(finalout[3:0]), .y(HEX0)),
-	   d1(.a(finalout[7:4]), .y(HEX1)),
-	   d2(.a(finalout[11:8]), .y(HEX2)),
-	   d3(.a(finaln[3:0]), .y(HEX3)),
-	   d4(.a(finaln[7:4]), .y(HEX4)),
-	   d5(.a(finaln[11:8]), .y(HEX5));
+    // Status
+    logic        run_complete;
+    logic        run_active;
 
-   logic [15:0] finalout = 0;
-   logic [11:0] finaln = 0;
-   logic [11:0] ogn;
-   logic [22:0] counter = 0;
-   logic 	finished = 0;
-   logic	enforce = 0;
+    assign clk = CLOCK_50;
 
-   always_ff @(posedge clk) begin
-	   go <= (~KEY[3] ? 1 : 0);
+    // Range module: 256 words, 8-bit address
+    range #(256, 8) r (
+        .clk   (clk),
+        .go    (go),
+        .start (start),
+        .done  (done),
+        .count (count)
+    );
 
-	   if (go) begin
-		   finished <= 0;
-		   n <= start;
-	   end
+    // Active-low pushbuttons
+    assign key0_pressed = ~KEY[0];
+    assign key1_pressed = ~KEY[1];
+    assign key2_pressed = ~KEY[2];
+    assign key3_pressed = ~KEY[3];
 
-	   if (done) begin
-		   finished <= 1;
-		   enforce <= 1;
-	   end
+    // Hold repeat tick (about 50 MHz / 2^22 ≈ 12 Hz; tweak if desired)
+    assign repeat_tick = (hold_ctr == 22'd0);
 
-	   if (enforce) begin
-		   ogn <= n;
-		   start <= 0;
-	   end
-	   
-	   if (counter == 0)
-		   enforce <= 0;
+    // Switch-set base value and offset-selected displayed value
+    assign base    = SW;
+    assign n       = {2'b00, base} + {4'b0000, offset};
+    assign count12 = count[11:0];
 
-	   if (finished) begin
-		   finaln <= n;
-		   finalout <= count;
-	   end else begin
-		   finaln <= SW;
-		   start <= SW;
-	   end
+    // start is base when pulsing go, otherwise it's the RAM read address (offset)
+    assign start = go ? {22'd0, base} : {24'd0, offset};
 
-	   counter <= counter + 1;
+    initial begin
+        go           = 1'b0;
+        offset       = 8'd0;
+        hold_ctr     = 22'd0;
+        key0_prev    = 1'b0;
+        key1_prev    = 1'b0;
+        key2_prev    = 1'b0;
+        key3_prev    = 1'b0;
+        run_complete = 1'b0;
+        run_active   = 1'b0;
+    end
 
-	   if (~KEY[0] && counter == 0 && finished && n > ogn) begin
-		   n <= n - 1;
-		   start <= start - 1;
-	   end
+    always_ff @(posedge clk) begin
+        hold_ctr <= hold_ctr + 22'd1;
+        go       <= 1'b0;
 
-	   if (~KEY[1] && counter == 0 && finished && n < ogn + 255) begin
-		   n <= n + 1;
-		   start <= start + 1;
-	   end
+        // Run finished
+        if (done) begin
+            run_complete <= 1'b1;
+            run_active   <= 1'b0;
+        end
 
-	   if (~KEY[2] && finished) begin
-		   n <= ogn;
-		   start <= 0;
-	   end
-   end
+        // Start run on KEY[3] press edge
+        if (key3_pressed && !key3_prev) begin
+            go           <= 1'b1;
+            run_complete <= 1'b0;
+            run_active   <= 1'b1;
+        end
 
-   assign LEDR = SW;
+        // Reset offset on KEY[2] press edge
+        if (key2_pressed && !key2_prev) begin
+            offset <= 8'd0;
+
+        // Increment/decrement offset (one key at a time), with hold-repeat
+        end else if (key0_pressed ^ key1_pressed) begin
+            if ((key0_pressed && !key0_prev) || (key0_pressed && repeat_tick)) begin
+                if (offset != 8'hff) offset <= offset + 8'd1;
+
+            end else if ((key1_pressed && !key1_prev) || (key1_pressed && repeat_tick)) begin
+                if (offset != 8'h00) offset <= offset - 8'd1;
+            end
+        end
+
+        // Save previous key states for edge detect
+        key0_prev <= key0_pressed;
+        key1_prev <= key1_pressed;
+        key2_prev <= key2_pressed;
+        key3_prev <= key3_pressed;
+    end
+
+    // Seven-seg outputs: right 3 = count, left 3 = n
+    hex7seg h0(.a(count12[3:0]),  .y(HEX0));
+    hex7seg h1(.a(count12[7:4]),  .y(HEX1));
+    hex7seg h2(.a(count12[11:8]), .y(HEX2));
+    hex7seg h3(.a(n[3:0]),        .y(HEX3));
+    hex7seg h4(.a(n[7:4]),        .y(HEX4));
+    hex7seg h5(.a(n[11:8]),       .y(HEX5));
+
+    // Debug LEDs
+    assign LEDR[3:0] = count[15:12];
+    assign LEDR[7:4] = offset[3:0];
+    assign LEDR[8]   = run_active;
+    assign LEDR[9]   = run_complete;
 
 endmodule
