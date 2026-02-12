@@ -10,6 +10,7 @@ module range
 
    logic 		cgo;    // "go" for the Collatz iterator
    logic                cdone;  // "done" from the Collatz iterator
+   logic [31:0]		cdout; 	// "dout" from the Collatz iterator
    logic [31:0] 	n;      // number to start the Collatz iterator
 
 // verilator lint_off PINCONNECTEMPTY
@@ -38,7 +39,7 @@ module range
 		   din <= 1;
 	   end
 	   
-	   if (~cgo && cdone)
+	   if (~cgo && ~cdone)
 		   din <= din + 1;
 	   
 	   if ((n > 1 && cdout == 2) || n <= 1)
