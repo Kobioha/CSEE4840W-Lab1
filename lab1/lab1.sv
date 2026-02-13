@@ -73,12 +73,12 @@ module lab1( input logic        CLOCK_50,  // 50 MHz Clock input
 
 	   counter <= counter + 1;
 
-	   if (~KEY[1] && counter == 0 && finished && n > ogn) begin
+	   if (~KEY[1] && KEY[0] && counter == 0 && finished && n > ogn) begin
 		   n <= n - 1;
 		   start <= start - 1;
 	   end
 
-	   if (~KEY[0] && counter == 0 && finished && n < ogn + 255) begin
+	   if (~KEY[0] && KEY[1] && counter == 0 && finished && n < ogn + 255) begin
 		   n <= n + 1;
 		   start <= start + 1;
 	   end
